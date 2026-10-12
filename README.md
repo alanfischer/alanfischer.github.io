@@ -1,3 +1,3 @@
 # alanfischer.github.io
 
-My blog
+[I love home automation, mountain biking, and my family... and not in that order.](alanfischer.github.io)

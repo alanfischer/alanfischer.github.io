@@ -1,2 +1,11 @@
-title: "I love home automation, mountain biking, and my family... and not in that order."
+title: "Alan Fischer"
+description: "I love home automation, mountain biking, and my family... and not in that order."
+author: Alan Fischer
 theme: minima
+show_excerpts: true
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      image: /assets/images/header-aspens.jpg

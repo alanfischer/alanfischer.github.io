@@ -29,3 +29,26 @@
     }
   }
 }
+
+// Name as the title, with the tagline in smaller text underneath.
+.site-branding {
+  float: left;
+  padding: 10px 0 12px;
+}
+
+.site-title {
+  float: none;
+  display: block;
+  line-height: 1.2;
+}
+
+.site-tagline {
+  margin: 4px 0 0;
+  font-size: $small-font-size;
+  color: $grey-color-dark;
+}
+
+.post-preview {
+  color: $grey-color-dark;
+  margin-top: -$spacing-unit / 4;
+}

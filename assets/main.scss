@@ -44,14 +44,6 @@ $background-color: #f1f2ea;
   }
 }
 
-// The header provides its own pull-down bounce at the top of the page, so
-// switch off the browser's (it would otherwise fight it on Mac and iOS).
-@media (prefers-reduced-motion: no-preference) {
-  html {
-    overscroll-behavior-y: none;
-  }
-}
-
 // Name as the title, with the tagline in smaller text underneath.
 .site-branding {
   float: left;

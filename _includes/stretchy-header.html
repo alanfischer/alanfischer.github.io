@@ -1,0 +1,169 @@
+<script>
+// Stretchy header: at the top of the page, pulling down (trackpad, mouse
+// wheel, or touch drag) grows the header photo and pans out from the usual
+// strip toward the whole picture. Letting go springs it back.
+(function () {
+  var header = document.querySelector('.site-header');
+  if (!header) return;
+
+  // header-aspens-full.jpg is 1920x1440. The strip the header shows at rest
+  // is rows 716-1044 of it (the old header-aspens.jpg). Fully pulled, we aim
+  // to show rows 0-960 (sky down to the aspen trunks) above the title band.
+  var IMG_W = 1920, IMG_H = 1440, STRIP_Y = 716, STRIP_H = 328, SCENE_H = 960;
+  var STIFFNESS = 0.8;     // higher = less resistance when pulling
+  var MAX_VIEWPORT = 0.85; // fully pulled header is at most this much of the screen
+  var MIN_SCENE = 0.4;     // ...and its photo part at least this much (narrow screens)
+
+  var W, H0, pullMax, s1, top1;
+  var pull = 0, target = 0, vel = 0, raw = 0;
+  var mode = 'idle'; // idle | wheel | touch | release
+  var rafId = 0, lastT = 0, idleTimer = 0;
+
+  function measure() {
+    header.style.setProperty('--pull', '0px');
+    W = header.clientWidth;
+    H0 = header.offsetHeight;
+    var vh = window.innerHeight;
+    var pad = parseFloat(getComputedStyle(header).paddingTop); // photo-only part
+    var band = H0 - pad;                                       // title area
+    var scene = Math.min(Math.max(SCENE_H * W / IMG_W, vh * MIN_SCENE), vh * MAX_VIEWPORT - band);
+    var hMax = band + scene;
+    pullMax = Math.max(0, hMax - H0);
+    // Target framing: scene rows end where the fade into the title band
+    // starts (the CSS gradient begins fading 70% of the way down the photo).
+    var clear = scene - 0.7 * pad;
+    s1 = Math.max(W / IMG_W, clear / SCENE_H, hMax / IMG_H);
+    top1 = Math.max(0, SCENE_H - clear / s1);
+  }
+
+  // Rubber-band curve: easy at first, stiffer as it nears pullMax.
+  function resist(r) {
+    return pullMax ? pullMax * (1 - Math.exp(-r / (pullMax * STIFFNESS))) : 0;
+  }
+  function unresist(p) {
+    return pullMax ? -pullMax * STIFFNESS * Math.log(1 - Math.min(p / pullMax, 0.999)) : 0;
+  }
+
+  function render() {
+    var H = H0 + pull;
+    var t = pullMax ? Math.min(pull / pullMax, 1) : 0;
+
+    // Rest: cover the strip, anchored at its top (what the CSS used to do).
+    // In between: zoom out and slide the top edge up toward the target.
+    var s0 = Math.max(W / IMG_W, H0 / STRIP_H);
+    var s = Math.max(s0 * Math.pow(s1 / s0, t), W / IMG_W, H / IMG_H);
+    var topRow = STRIP_Y + (top1 - STRIP_Y) * t;
+    var x = (W - IMG_W * s) / 2;
+    var y = Math.min(0, Math.max(H - IMG_H * s, -topRow * s));
+
+    header.style.setProperty('--pull', pull.toFixed(2) + 'px');
+    header.style.setProperty('--photo-size', (IMG_W * s).toFixed(2) + 'px ' + (IMG_H * s).toFixed(2) + 'px');
+    header.style.setProperty('--photo-pos', x.toFixed(2) + 'px ' + y.toFixed(2) + 'px');
+  }
+
+  function frame(now) {
+    rafId = 0;
+    var dt = Math.min(0.032, (now - lastT) / 1000 || 0.016);
+    lastT = now;
+    if (mode === 'release') {
+      // Critically damped spring back to rest: no overshoot, no wobble.
+      var k = 170, d = 2 * Math.sqrt(k);
+      vel += (-k * pull - d * vel) * dt;
+      pull += vel * dt;
+      if (pull < 0.5 && Math.abs(vel) < 10) { pull = 0; vel = 0; raw = 0; mode = 'idle'; }
+    } else if (mode === 'wheel') {
+      // Smooth out chunky mouse-wheel steps.
+      pull += (target - pull) * Math.min(1, dt * 18);
+      if (Math.abs(target - pull) < 0.3) pull = target;
+    } else {
+      pull = target;
+    }
+    render();
+    if (mode === 'release' || (mode === 'wheel' && pull !== target)) schedule();
+  }
+
+  function schedule() {
+    if (!rafId) { lastT = performance.now(); rafId = requestAnimationFrame(frame); }
+  }
+
+  function release() {
+    clearTimeout(idleTimer);
+    if (mode === 'idle' || mode === 'release') return;
+    mode = 'release';
+    vel = 0;
+    schedule();
+  }
+
+  function grab(newMode) {
+    if (mode !== newMode) { raw = unresist(pull); vel = 0; mode = newMode; }
+  }
+
+  function atTop() { return window.scrollY <= 0; }
+
+  function relayout() {
+    measure();
+    pull = Math.min(pull, pullMax);
+    render();
+  }
+  window.addEventListener('resize', relayout);
+  window.addEventListener('load', relayout); // fonts can change the header height
+  relayout();
+
+  // Keep the framing, skip the motion.
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  // Wheel / trackpad.
+  window.addEventListener('wheel', function (e) {
+    if (e.ctrlKey || !atTop()) return; // ctrl+wheel is pinch-zoom
+    var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
+    if (Math.abs(e.deltaX) > Math.abs(dy)) return;
+    if (dy >= 0 && mode !== 'wheel') return; // ordinary scroll down
+
+    if (dy > 0 && raw <= dy) { // scrolled back down past rest: let the page scroll
+      raw = 0; target = 0; release();
+      return;
+    }
+    e.preventDefault();
+    grab('wheel');
+    raw = Math.max(0, raw - dy);
+    target = resist(raw);
+    schedule();
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(release, 140); // wheel has no "let go", so use a pause
+  }, { passive: false });
+
+  // Touch.
+  var startX = 0, startY = 0, base = 0, tracking = false, dragging = false;
+
+  window.addEventListener('touchstart', function (e) {
+    tracking = e.touches.length === 1 && atTop();
+    dragging = false;
+    if (!tracking) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    base = mode === 'release' ? unresist(pull) : 0; // catch it mid-bounce
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    if (!tracking) return;
+    var dx = e.touches[0].clientX - startX;
+    var dy = e.touches[0].clientY - startY;
+    if (!dragging) {
+      if (Math.abs(dx) > Math.abs(dy) || base + dy <= 0) { tracking = false; return; }
+      dragging = true;
+      grab('touch');
+    }
+    e.preventDefault();
+    target = resist(Math.max(0, base + dy));
+    schedule();
+  }, { passive: false });
+
+  function touchEnd() {
+    if (dragging) release();
+    tracking = dragging = false;
+  }
+  window.addEventListener('touchend', touchEnd);
+  window.addEventListener('touchcancel', touchEnd);
+
+})();
+</script>

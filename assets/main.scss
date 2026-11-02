@@ -10,18 +10,26 @@ $background-color: #f1f2ea;
 
 // Short photo strip across the top of the header, with the title and nav
 // sitting on a light band underneath so they stay readable.
+//
+// The photo is the full aspens shot. At rest, stretchy-header.html frames
+// the same strip the header always showed; pulling down past the top of the
+// page grows the strip by --pull pixels and pans out to the whole photo.
+// Without JS, --photo-size/--photo-pos fall back to roughly that strip.
 @mixin header-photo($height) {
-  padding-top: $height;
+  padding-top: calc(#{$height} + var(--pull, 0px));
   border-bottom: none;
-  background:
+  background-image:
     linear-gradient(
       to bottom,
       rgba($background-color, 0) 0,
-      rgba($background-color, 0) ($height * 0.3),
-      rgba($background-color, 0.85) ($height + 10px),
+      rgba($background-color, 0) calc(#{$height * 0.3} + var(--pull, 0px)),
+      rgba($background-color, 0.85) calc(#{$height + 10px} + var(--pull, 0px)),
       $background-color 100%
     ),
-    url("{{ '/assets/images/header-aspens.jpg' | relative_url }}") center top / cover no-repeat;
+    url("{{ '/assets/images/header-aspens-full.jpg' | relative_url }}");
+  background-repeat: no-repeat;
+  background-size: 100% 100%, var(--photo-size, cover);
+  background-position: 0 0, var(--photo-pos, center 62%);
 }
 
 .site-header {
@@ -31,8 +39,16 @@ $background-color: #f1f2ea;
     @include header-photo(70px);
 
     .site-nav {
-      top: 70px + 9px;
+      top: calc(#{70px + 9px} + var(--pull, 0px));
     }
+  }
+}
+
+// The header provides its own pull-down bounce at the top of the page, so
+// switch off the browser's (it would otherwise fight it on Mac and iOS).
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    overscroll-behavior-y: none;
   }
 }
 

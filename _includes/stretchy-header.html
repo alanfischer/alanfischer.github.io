@@ -117,44 +117,64 @@
     if (e.ctrlKey || !atTop()) return; // ctrl+wheel is pinch-zoom
     var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
     if (Math.abs(e.deltaX) > Math.abs(dy)) return;
-    if (dy >= 0 && mode !== 'wheel') return; // ordinary scroll down
+    if (!pullMax || (dy >= 0 && mode !== 'wheel')) return; // ordinary scroll down
 
-    if (dy > 0 && raw <= dy) { // scrolled back down past rest: let the page scroll
+    if (dy > 0 && target <= dy) { // pushed back to rest: hand back to the page
       raw = 0; target = 0; release();
       return;
     }
     e.preventDefault();
     grab('wheel');
-    raw = Math.max(0, raw - dy);
-    target = resist(raw);
+    move(-dy);
     schedule();
     clearTimeout(idleTimer);
     idleTimer = setTimeout(release, 140); // wheel has no "let go", so use a pause
   }, { passive: false });
 
+  // Pulling down meets resistance; pushing back up retracts 1:1, so the header
+  // never soaks up scrolling after it's hit its limit.
+  function move(d) {
+    if (d > 0) {
+      raw = Math.min(raw + d, unresist(pullMax * 0.97));
+      target = resist(raw);
+    } else {
+      target = Math.max(0, target + d);
+      raw = unresist(target);
+    }
+  }
+
   // Touch.
-  var startX = 0, startY = 0, base = 0, tracking = false, dragging = false;
+  var startX = 0, startY = 0, lastY = 0, tracking = false, dragging = false;
 
   window.addEventListener('touchstart', function (e) {
-    tracking = e.touches.length === 1 && atTop();
+    tracking = pullMax > 0 && e.touches.length === 1 && atTop();
     dragging = false;
     if (!tracking) return;
     startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    base = mode === 'release' ? unresist(pull) : 0; // catch it mid-bounce
+    startY = lastY = e.touches[0].clientY;
   }, { passive: true });
 
   window.addEventListener('touchmove', function (e) {
     if (!tracking) return;
+    var y = e.touches[0].clientY;
     var dx = e.touches[0].clientX - startX;
-    var dy = e.touches[0].clientY - startY;
+    var dy = y - startY;
     if (!dragging) {
-      if (Math.abs(dx) > Math.abs(dy) || base + dy <= 0) { tracking = false; return; }
+      // Only take over for a downward drag (or to catch it mid-bounce).
+      if (Math.abs(dx) > Math.abs(dy) || (dy <= 0 && pull <= 0)) { tracking = false; return; }
       dragging = true;
       grab('touch');
+      target = pull;
+    }
+    move(y - lastY);
+    lastY = y;
+    if (target <= 0 && y < startY) { // pushed back to rest: let the page scroll
+      tracking = dragging = false;
+      mode = 'idle'; raw = 0;
+      schedule();
+      return;
     }
     e.preventDefault();
-    target = resist(Math.max(0, base + dy));
     schedule();
   }, { passive: false });
 
